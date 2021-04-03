@@ -12,11 +12,15 @@ Usage:
     python feed.py
 """
 
+import datetime
+import json
 import queue
 import threading
+import time
 import tkinter as tk
 import tkinter.filedialog as fd
 import tkinter.ttk as ttk
+from enum import Enum
 from os.path import isfile
 from tkinter import scrolledtext as st
 
@@ -24,10 +28,19 @@ import tweepy
 from geopy import Nominatim
 
 
+class GeneralStatus(Enum):
+    IDLE = 'idle'
+    FETCHING = 'fetching'
+    PARSING = 'parsing'
+    ERROR = 'error'
+
+
 class TweepyApi:
     def __init__(self, credentials_path='../credentials.txt'):
         self.credentials = self.__read_in_credentials(credentials_path)
         self.api = self.__create_api()
+
+        self.status = GeneralStatus.IDLE
 
         # Adapted from:
         # https://developer.twitter.com/en/docs/twitter-for-websites/supported-languages
@@ -79,7 +92,16 @@ class TweepyApi:
             "in_reply_to_user_id",
             "in_reply_to_status_id",
             "in_reply_to_screen_name",
+            "user",
         }
+
+    def set_status(self, status):
+        print(f'New status api: {status}')
+        self.status = status
+        return status
+
+    def get_status(self):
+        return self.status
 
     @staticmethod
     def __read_in_credentials(path):
@@ -105,6 +127,10 @@ class TweepyApi:
 
         return credentials
 
+    def is_busy(self):
+        return (self.status != GeneralStatus.IDLE or
+                self.status != GeneralStatus.ERROR)
+
     def __create_api(self):
         ''' Creates a tweepy api instance '''
         auth = tweepy.OAuthHandler(
@@ -121,6 +147,8 @@ class TweepyApi:
 
     def __extract_converstation(self, response, acc=[]):
         ''' Recursively extracts a conversation '''
+        self.set_status(GeneralStatus.PARSING)
+
         cleaned_item = {
             key: val
             for key, val in response.items()
@@ -129,12 +157,18 @@ class TweepyApi:
 
         acc.append(cleaned_item)
 
-        new = self.api.get_status(
-            id=cleaned_item['in_reply_to_status_id'])._json
+        try:
+            new = self.api.get_status(
+                id=cleaned_item['in_reply_to_status_id']
+            )._json
+        except (tweepy.error.TweepError, tweepy.error.RateLimitError):
+            self.set_status(GeneralStatus.ERROR)
+            return []
 
         # Exit condition is the main 'parent' of the initial tweet or the max
         # number of turns per conversation.
-        if not new['in_reply_to_status_id'] or len(acc) >= self.max_conv_len:
+        if not new['in_reply_to_status_id'] or len(acc) == self.max_conv_len:
+            self.set_status(GeneralStatus.IDLE)
             return acc
 
         return self.__extract_converstation(new, acc)
@@ -150,6 +184,8 @@ class TweepyApi:
                 geocode:    string for only getting tweets from within a
                             certain area, format -> 'lat,long,radius<ml | km>'
         '''
+        self.set_status(GeneralStatus.FETCHING)
+
         if not language:
             language = self.default_language
 
@@ -182,14 +218,16 @@ class TweepyApi:
 
             # We only want to find conversations with 3-10 turns, as per the
             # assignment instructions. We cannot specify this in calling the
-            # Twitter api, so we just have to try again here.
-            if (conversation_len < self.min_conv_len or
-                    conversation_len > self.max_conv_len):
-                print(conversation)
-                print(
-                    f'Conversation with length {conversation_len}, trying again...')
-                continue
+            # Twitter api, so we just have to try again if we do not find it
+            # here.
+            if (conversation_len >= self.min_conv_len or
+                    conversation_len <= self.max_conv_len):
+                break
 
+            print(
+                f'Conversation with length {conversation_len}, trying again...')
+
+        self.set_status(GeneralStatus.IDLE)
         return conversation
 
     def change_credentials(self, filepath):
@@ -253,6 +291,10 @@ class EditableList(tk.Frame):
         ''' Checks if the query exists and adds it to the list if it does '''
         entry = self.entry.get().strip()
 
+        if not entry:
+            self.status_text.set('Cannot add empty term')
+            return
+
         self.text.configure(state='normal')
         self.text.insert(tk.END, f'{entry}\n')
         self.text.configure(state='disabled')
@@ -295,6 +337,22 @@ class Main(tk.Frame):
         # -- Api for retrieving conversations --
         self.api = TweepyApi()
 
+        # -- Status indicator if the frame is busy --
+        self.status = GeneralStatus.IDLE
+
+        self.status_text = tk.StringVar(self)
+        self.status_label = ttk.Label(self, textvariable=self.status_text)
+
+        # -- Tweet queue with parsed conversations --
+        self.tweet_queue = queue.Queue()
+
+        # --
+        #   List with fetched conversations, used to export to file.
+        #   Consists of tuples: (list of conversation, search parameters)
+        # --
+        self.conversation_list = []
+        self.output_dir = '../data'
+
         # -- List of search terms --
         self.search_terms_list = EditableList(self, 'Search terms')
 
@@ -320,22 +378,69 @@ class Main(tk.Frame):
         location_label = tk.Label(self, text="Address")
         radius_label = tk.Label(self, text="Radius (km)")
 
+        # -- Tweets treeview --
+        ttk.Style().configure('Custom.Treeview', rowheight=50)
+
+        # -- Treeview  --
+        self.tree = ttk.Treeview(self,
+                                 columns=('username', 'tweet'),
+                                 style='Custom.Treeview')
+        self.tree.column('username')
+        self.tree.heading('username', text='Username')
+        self.tree.column('tweet')
+        self.tree.heading('tweet', text='Tweet')
+        self.tree.bind("<Double-1>", self.on_tweet_click)
+
+        # -- Treeview scroll --
+        scroll = ttk.Scrollbar(self, orient=tk.VERTICAL,
+                               command=self.tree.yview)
+        self.tree.configure(yscroll=scroll.set)
+
+        scroll.grid(row=0, column=2, sticky='ens')
+        self.tree.grid(row=0, column=2, sticky='nsew')
+
         # -- Arrange widgets --
         self.search_terms_list.grid(
             row=0, column=0, columnspan=2, sticky='nsew')
         self.language_select.grid(row=1, column=1, sticky='ne')
         self.location_entry.grid(row=2, column=1, sticky='nsew')
         self.radius_entry.grid(row=3, column=1, sticky='nsew')
+        self.status_label.grid(row=4, column=1, sticky='nsew')
 
         langauge_label.grid(row=1, column=0, sticky='w')
         location_label.grid(row=2, column=0, sticky='w')
         radius_label.grid(row=3, column=0, sticky='w')
-        submit_button.grid(row=4, column=0, columnspan=2, sticky='nsew')
+        submit_button.grid(row=4, column=0, sticky='nsew')
+
+        self.__update_treeview()
+        self.__start_poll_api_status()
 
         self.grid()
 
+    def on_tweet_click(self, event):
+        ''' Dummy method to override with a method to handle double
+            clicking a tree item.
+        '''
+        print(event)
+        print("Clicked on: ", self.tree.item(self.tree.selection()[0]))
+
+    def __start_poll_api_status(self):
+        threading.Thread(target=self.poll_api_status).start()
+
+    def poll_api_status(self):
+        self.status_text.set(f'Api status: {self.api.get_status().value}')
+        self.after(100, self.poll_api_status)
+
     def submit(self):
         threading.Thread(target=self.__submit).start()
+
+    def set_status(self, status):
+        print(f'New status main frame: {status}')
+        self.status = status
+
+    def is_busy(self):
+        return (self.status != GeneralStatus.IDLE or
+                self.status != GeneralStatus.ERROR)
 
     def __submit(self):
         '''
@@ -343,7 +448,8 @@ class Main(tk.Frame):
             conversation. The filters get validated before sending the request
             to the Twitter api.
          '''
-        # TODO: threads en queues maken voor geocode en twitter api
+        self.set_status(GeneralStatus.FETCHING)
+
         location_query = self.location_entry.get()
         location_radius = self.radius_entry.get()
 
@@ -361,26 +467,80 @@ class Main(tk.Frame):
 
         result = self.api.get_conversation(search_query, language, geo_query)
 
-        print(result)
+        self.conversation_list.append((result, search_query))
+        self.tweet_queue.put(result)
+
+        self.set_status(GeneralStatus.IDLE)
 
     def new_credentials(self):
+        self.set_status(GeneralStatus.PARSING)
+
         filepath = fd.askopenfilename()
 
-        if not filepath:
-            return
+        if filepath:
+            self.api.change_credentials(filepath)
 
-        self.api.change_credentials(filepath)
+        self.set_status(GeneralStatus.IDLE)
+
+    def __update_treeview(self):
+        try:
+            conversation = self.tweet_queue.get(block=False)
+
+            parent_tweet = conversation.pop()
+
+            if (self.tree.exists(parent_tweet['id'])):
+                self.set_status(GeneralStatus.ERROR)
+                return
+
+            self.tree.insert(
+                '',
+                tk.END,
+                parent_tweet['id'],
+                text=parent_tweet['id'],
+                values=(
+                    parent_tweet['user']['screen_name'],
+                    parent_tweet['text']
+                ),
+                open=True
+            )
+
+            for tweet in conversation:
+                self.tree.insert(
+                    parent_tweet['id'],
+                    tk.END,
+                    tweet['id'],
+                    text=tweet['id'],
+                    values=(
+                        tweet['user']['screen_name'],
+                        tweet['text']
+                    ),
+                )
+
+        except queue.Empty:
+            pass
+
+        self.after(100, self.__update_treeview)
 
     def save_selection(self):
+        self.set_status(GeneralStatus.PARSING)
 
-        pass
+        if len(self.conversation_list) > 0:
+            for item in self.conversation_list:
+
+                now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                filename = f'{now}-{item[1]}.json'
+
+                with open(filename, 'w') as f:
+                    json.dump({'conversations': item[0]}, f)
+
+        self.set_status(GeneralStatus.IDLE)
 
     def clean_up(self):
         ''' Waits for all threads from all widgets to close down and closes
             the window main window afterwards.
         '''
-        # while not self.notebook.clean_up() or not self.submissions.clean_up():
-        # time.sleep(0.1)
+        if self.is_busy():
+            self.after(100, self.clean_up)
 
         self.clean_up_parent()
 
