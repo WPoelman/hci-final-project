@@ -5,9 +5,11 @@
 File name:  feed.py
 Authors:    Erwin Meijerhof (*******)
             Wessel Poelman (S2976129)
-Date:       01-04-2021
+Date:       04-04-2021
 Description:
-    bla bla komt nog
+    The first part of Assignment 3 of the course Human Computer Interaction.
+    This frame allows the user to specify filters for fetching a specific
+    Twitter conversation. This conversation is also shown.
 Usage:
     python feed.py
 """
@@ -29,6 +31,7 @@ from geopy import Nominatim
 
 
 class GeneralStatus(Enum):
+    ''' Enum used for indicating a status '''
     IDLE = 'idle'
     FETCHING = 'fetching'
     PARSING = 'parsing'
@@ -85,6 +88,8 @@ class TweepyApi:
         self.min_conv_len = 3
         self.max_conv_len = 10
 
+        # These are the fields that get extracted from the individual tweets
+        # based on their keys.
         self.wanted_keys = {
             "created_at",
             "id",
@@ -96,24 +101,24 @@ class TweepyApi:
         }
 
     def set_status(self, status):
+        ''' Sets the status of the api '''
         print(f'New status api: {status}')
         self.status = status
         return status
 
     def get_status(self):
+        ''' Returns the status of the api '''
         return self.status
 
-    @staticmethod
-    def __read_in_credentials(path):
-        ''' Reads in the twitter api credentials from the given path '''
+    def __read_in_credentials(self, path):
+        ''' Reads in twitter api credentials from the given path '''
         if not isfile(path):
-            print('Credentials file not found.')
-            exit(1)
+            self.set_status(GeneralStatus.ERROR)
+            print('Path to credentials file does not exist.')
+            return None
 
         with open(path, 'r') as f:
-
             credentials = {}
-
             for line in f.readlines():
                 key, value = line.strip().split('=')
                 credentials[key] = value
@@ -122,12 +127,14 @@ class TweepyApi:
                          'ACCESS_TOKEN', 'ACCESS_SECRET'}
 
         if required_keys != credentials.keys():
-            print('Not all required keys are present')
-            exit(1)  # Hier een status oid meegeven ipv exit
+            self.set_status(GeneralStatus.ERROR)
+            print('Not all needed keys are given or the format is wrong.')
+            return None
 
         return credentials
 
     def is_busy(self):
+        ''' Indicates if the api is busy '''
         return (self.status != GeneralStatus.IDLE or
                 self.status != GeneralStatus.ERROR)
 
@@ -174,8 +181,7 @@ class TweepyApi:
         return self.__extract_converstation(new, acc)
 
     def get_conversation(self, query=None, language=None, geocode=None):
-        '''
-            Gets a conversation, optionally filtered using the given
+        ''' Gets a conversation, optionally filtered using the given
             parameters.
                 query:      search query
                 language:   display name of the available languages, which gets
@@ -236,13 +242,16 @@ class TweepyApi:
         return conversation
 
     def change_credentials(self, filepath):
-        del self.credentials
-        del self.api
+        ''' Changes the Twitter api credentials with a credentials file from
+            the given path.
+        '''
+        credentials = self.__read_in_credentials(filepath)
 
-        self.credentials = self.__read_in_credentials(filepath)
-        self.api = self.__create_api()
-
-        print(f'Successfully changed credentials using file:\n{filepath}')
+        if credentials:
+            self.credentials = credentials
+            self.api = self.__create_api()
+            self.set_status(GeneralStatus.IDLE)
+            print(f'Successfully changed credentials using file:\n{filepath}')
 
 
 class EditableList(tk.Frame):
@@ -332,19 +341,6 @@ class EditableList(tk.Frame):
 
 class Main(tk.Frame):
     def __init__(self, parent, *args, **kwargs):
-        ''' TODO:
-        Needed:
-            - 4 input fields changing credentials or
-              file selector for new credentials.txt file
-            - Show tweets with conversation (3 - 10 turns)
-            - Filter tweets on
-                * search terms, text, hashtags etc.
-                * language
-                * user location (type address -> lat long from geopy)
-            - Save filtered conversations to a file
-              (json, filter options encoded in filename)
-        '''
-
         super().__init__(parent)
         self.clean_up_parent = parent.destroy
 
@@ -367,7 +363,6 @@ class Main(tk.Frame):
         #   Consists of tuples: (list of conversation, search parameters)
         # --
         self.conversation_list = []
-        self.output_dir = '../data'
 
         # -- List of search terms --
         self.search_terms_list = EditableList(self, 'Search terms')
@@ -442,26 +437,32 @@ class Main(tk.Frame):
         print("Clicked on: ", self.tree.item(self.tree.selection()[0]))
 
     def __start_poll_api_status(self):
+        ''' Fires off the api status polling on a new thread '''
         threading.Thread(target=self.poll_api_status).start()
 
     def poll_api_status(self):
+        ''' Polls the status of the tweepy api to see its status '''
         self.status_text.set(f'Api status: {self.api.get_status().value}')
         self.after(100, self.poll_api_status)
 
     def submit(self):
+        ''' Fires off the fetching and parsing of new conversations in a
+            new thread.
+        '''
         threading.Thread(target=self.__submit).start()
 
     def set_status(self, status):
+        ''' Sets the frame status '''
         print(f'New status main frame: {status}')
         self.status = status
 
     def is_busy(self):
+        ''' Indicates if the frame is busy '''
         return (self.status != GeneralStatus.IDLE or
                 self.status != GeneralStatus.ERROR)
 
     def __submit(self):
-        '''
-            Submits the current filters and asks the api to retrieve a
+        ''' Submits the current filters and asks the api to retrieve a
             conversation. The filters get validated before sending the request
             to the Twitter api.
          '''
@@ -497,6 +498,9 @@ class Main(tk.Frame):
         self.set_status(GeneralStatus.IDLE)
 
     def new_credentials(self):
+        ''' Asks the user to provide a new credentials file and instructs the
+            tweepy api to use the new credentials.
+        '''
         self.set_status(GeneralStatus.PARSING)
 
         filepath = fd.askopenfilename()
@@ -507,6 +511,7 @@ class Main(tk.Frame):
         self.set_status(GeneralStatus.IDLE)
 
     def __update_treeview(self):
+        ''' Updates the treeview with tweet conversations from the queue '''
         try:
             conversation = self.tweet_queue.get(block=False)
 
@@ -539,7 +544,8 @@ class Main(tk.Frame):
 
         self.after(100, self.__update_treeview)
 
-    def save_selection(self):
+    def save(self):
+        ''' Saves the fetched conversations to a json file '''
         self.set_status(GeneralStatus.PARSING)
 
         if len(self.conversation_list) > 0:
@@ -582,7 +588,7 @@ def main():
     menu_bar = tk.Menu(root)
 
     file_menu = tk.Menu(menu_bar, tearoff=0)
-    file_menu.add_command(label="Save", command=m.save_selection)
+    file_menu.add_command(label="Save", command=m.save)
     file_menu.add_command(label="Exit", command=m.clean_up)
 
     options_menu = tk.Menu(menu_bar, tearoff=0)
