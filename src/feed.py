@@ -15,8 +15,8 @@ Usage:
 import datetime
 import json
 import queue
+import textwrap
 import threading
-import time
 import tkinter as tk
 import tkinter.filedialog as fd
 import tkinter.ttk as ttk
@@ -220,12 +220,17 @@ class TweepyApi:
             # assignment instructions. We cannot specify this in calling the
             # Twitter api, so we just have to try again if we do not find it
             # here.
-            if (conversation_len >= self.min_conv_len or
+            if (conversation_len >= self.min_conv_len and
                     conversation_len <= self.max_conv_len):
                 break
 
             print(
                 f'Conversation with length {conversation_len}, trying again...')
+
+        if not conversation:
+            self.set_status(GeneralStatus.ERROR)
+            print('No results found!')
+            return []
 
         self.set_status(GeneralStatus.IDLE)
         return conversation
@@ -273,19 +278,28 @@ class EditableList(tk.Frame):
         clear_button = tk.Button(bottom_frame, text='clear',
                                  command=self.clear_entries)
 
+        tk.Grid.rowconfigure(self, 0, weight=1)
+        tk.Grid.columnconfigure(self, 0, weight=1)
+
+        tk.Grid.rowconfigure(top_frame, 0, weight=0)
+        tk.Grid.columnconfigure(top_frame, 0, weight=0)
+
+        tk.Grid.rowconfigure(bottom_frame, 0, weight=0)
+        tk.Grid.columnconfigure(bottom_frame, 0, weight=0)
+
         # -- Top frame grid --
-        top_frame.grid(row=1, column=0)
+        top_frame.grid(row=0, column=0)
         title_label.grid(row=0, column=0)
         label.grid(row=1, column=0)
         self.text.grid(row=2, column=0)
 
         # -- Bottom frame grid --
-        bottom_frame.grid(row=2, column=0)
+        bottom_frame.grid(row=1, column=0, sticky='s')
         self.entry.grid(row=0, column=1, sticky='s')
         add_button.grid(row=0, column=2, sticky='e')
         clear_button.grid(row=0, column=0, sticky='w')
 
-        self.grid()
+        self.grid(row=0, column=0, sticky='nsew')
 
     def add_entry(self):
         ''' Checks if the query exists and adds it to the list if it does '''
@@ -343,6 +357,8 @@ class Main(tk.Frame):
         self.status_text = tk.StringVar(self)
         self.status_label = ttk.Label(self, textvariable=self.status_text)
 
+        self.textwrapper = textwrap.TextWrapper(80).fill
+
         # -- Tweet queue with parsed conversations --
         self.tweet_queue = queue.Queue()
 
@@ -383,11 +399,9 @@ class Main(tk.Frame):
 
         # -- Treeview  --
         self.tree = ttk.Treeview(self,
-                                 columns=('username', 'tweet'),
+                                 columns=('tweet'),
                                  style='Custom.Treeview')
-        self.tree.column('username')
-        self.tree.heading('username', text='Username')
-        self.tree.column('tweet')
+        self.tree.column('tweet', width=600)
         self.tree.heading('tweet', text='Tweet')
         self.tree.bind("<Double-1>", self.on_tweet_click)
 
@@ -396,10 +410,10 @@ class Main(tk.Frame):
                                command=self.tree.yview)
         self.tree.configure(yscroll=scroll.set)
 
-        scroll.grid(row=0, column=2, sticky='ens')
-        self.tree.grid(row=0, column=2, sticky='nsew')
-
         # -- Arrange widgets --
+        tk.Grid.rowconfigure(self, 0, weight=1)
+        tk.Grid.columnconfigure(self, 0, weight=1)
+
         self.search_terms_list.grid(
             row=0, column=0, columnspan=2, sticky='nsew')
         self.language_select.grid(row=1, column=1, sticky='ne')
@@ -412,10 +426,13 @@ class Main(tk.Frame):
         radius_label.grid(row=3, column=0, sticky='w')
         submit_button.grid(row=4, column=0, sticky='nsew')
 
+        scroll.grid(row=0, column=2, rowspan=5, sticky='ens')
+        self.tree.grid(row=0, column=2, rowspan=5, sticky='nsew')
+
         self.__update_treeview()
         self.__start_poll_api_status()
 
-        self.grid()
+        self.grid(row=0, column=0, sticky='nsew')
 
     def on_tweet_click(self, event):
         ''' Dummy method to override with a method to handle double
@@ -451,7 +468,13 @@ class Main(tk.Frame):
         self.set_status(GeneralStatus.FETCHING)
 
         location_query = self.location_entry.get()
-        location_radius = self.radius_entry.get()
+
+        # Clean the radius of any non numeric characters and set it back
+        location_radius = ''.join(
+            c for c in self.radius_entry.get() if c.isdigit()
+        )
+        self.radius_entry.delete(0, tk.END)
+        self.radius_entry.insert(0, location_radius)
 
         geo_query = None
 
@@ -467,8 +490,9 @@ class Main(tk.Frame):
 
         result = self.api.get_conversation(search_query, language, geo_query)
 
-        self.conversation_list.append((result, search_query))
-        self.tweet_queue.put(result)
+        if result:
+            self.conversation_list.append((result, search_query))
+            self.tweet_queue.put(result)
 
         self.set_status(GeneralStatus.IDLE)
 
@@ -496,11 +520,8 @@ class Main(tk.Frame):
                 '',
                 tk.END,
                 parent_tweet['id'],
-                text=parent_tweet['id'],
-                values=(
-                    parent_tweet['user']['screen_name'],
-                    parent_tweet['text']
-                ),
+                text=parent_tweet['user']['screen_name'],
+                values=[self.textwrapper(parent_tweet['text'])],
                 open=True
             )
 
@@ -509,11 +530,8 @@ class Main(tk.Frame):
                     parent_tweet['id'],
                     tk.END,
                     tweet['id'],
-                    text=tweet['id'],
-                    values=(
-                        tweet['user']['screen_name'],
-                        tweet['text']
-                    ),
+                    text=tweet['user']['screen_name'],
+                    values=[self.textwrapper(tweet['text'])],
                 )
 
         except queue.Empty:
@@ -530,8 +548,11 @@ class Main(tk.Frame):
                 now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 filename = f'{now}-{item[1]}.json'
 
-                with open(filename, 'w') as f:
-                    json.dump({'conversations': item[0]}, f)
+                with open(filename, 'w') as out_file:
+                    json.dump(
+                        {'conversations': item[0], 'parameters': item[1]},
+                        out_file
+                    )
 
         self.set_status(GeneralStatus.IDLE)
 
@@ -550,6 +571,10 @@ class Main(tk.Frame):
 def main():
     root = tk.Tk()
     root.title('HCI - Final Project')
+
+    # This allows for somewhat graceful window resizing
+    tk.Grid.rowconfigure(root, 0, weight=1)
+    tk.Grid.columnconfigure(root, 0, weight=1)
 
     m = Main(root)
 
