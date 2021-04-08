@@ -42,11 +42,10 @@ class GeneralStatus(Enum):
 
 class TweepyApi:
     def __init__(self, credentials_path='../credentials.txt'):
-        self.credentials = self.__read_in_credentials(credentials_path)
-        self.api = self.__create_api()
-
         self.status = GeneralStatus.IDLE
         self.message = ''
+
+        self.seen_tweet_ids = set()
 
         # Adapted from:
         # https://developer.twitter.com/en/docs/twitter-for-websites/supported-languages
@@ -102,6 +101,14 @@ class TweepyApi:
             "in_reply_to_screen_name",
             "user",
         }
+
+        self.credentials = self.__read_in_credentials(credentials_path)
+        self.api = None
+
+        # This happens when someone does not have a valid credentials.txt file
+        # in their root directory of the program.
+        if self.credentials:
+            self.api = self.__create_api()
 
     def set_status(self, status):
         ''' Sets the status of the api '''
@@ -256,7 +263,12 @@ class TweepyApi:
                 # do not find it here.
                 if (conversation_len >= self.min_conv_len and
                         conversation_len <= self.max_conv_len):
-                    break
+
+                    ids = {i['id'] for i in conversation}
+
+                    if not ids.issubset(self.seen_tweet_ids):
+                        self.seen_tweet_ids.update(ids)
+                        break
 
                 self.set_status(GeneralStatus.RETRYING)
                 self.set_message((
@@ -316,7 +328,7 @@ class EditableList(tk.Frame):
         top_frame = tk.Frame(self)
         title_label = ttk.Label(top_frame, text=self.title)
         self.text = st.ScrolledText(top_frame, state='disabled',
-                                    wrap=tk.WORD)
+                                    wrap=tk.WORD, width=50)
         self.status_text = tk.StringVar(top_frame)
         label = ttk.Label(top_frame, textvariable=self.status_text)
 
@@ -331,11 +343,11 @@ class EditableList(tk.Frame):
         tk.Grid.rowconfigure(self, 0, weight=1)
         tk.Grid.columnconfigure(self, 0, weight=1)
 
-        tk.Grid.rowconfigure(top_frame, 0, weight=0)
-        tk.Grid.columnconfigure(top_frame, 0, weight=0)
+        tk.Grid.rowconfigure(top_frame, 0, weight=1)
+        tk.Grid.columnconfigure(top_frame, 0, weight=1)
 
-        tk.Grid.rowconfigure(bottom_frame, 0, weight=0)
-        tk.Grid.columnconfigure(bottom_frame, 0, weight=0)
+        tk.Grid.rowconfigure(bottom_frame, 0, weight=1)
+        tk.Grid.columnconfigure(bottom_frame, 0, weight=1)
 
         # -- Top frame grid --
         top_frame.grid(row=0, column=0)
@@ -439,6 +451,7 @@ class Main(tk.Frame):
         self.tree = ttk.Treeview(self,
                                  columns=('tweet'),
                                  style='Custom.Treeview')
+        self.tree.heading('#0', text='Author')
         self.tree.column('tweet', width=500)
         self.tree.heading('tweet', text='Tweet')
         self.tree.bind("<Double-1>", self.on_tweet_click)
@@ -464,8 +477,8 @@ class Main(tk.Frame):
         radius_label.grid(row=4, column=0, sticky='w')
         self.submit_button.grid(row=5, column=1, sticky='nsew')
 
-        scroll.grid(row=0, column=2, rowspan=5, sticky='ens')
-        self.tree.grid(row=0, column=2, rowspan=5, sticky='nsew')
+        scroll.grid(row=0, column=2, rowspan=6, sticky='ens')
+        self.tree.grid(row=0, column=2, rowspan=6, sticky='nsew')
 
         self.__update_treeview()
         self.__start_poll_system_status()
@@ -503,7 +516,11 @@ class Main(tk.Frame):
         ''' Fires off the fetching and parsing of new conversations in a
             new thread.
         '''
-        threading.Thread(target=self.__submit).start()
+        if not self.api:
+            self.set_status(GeneralStatus.ERROR)
+            self.set_message('No credentials file provided, please add one.')
+        else:
+            threading.Thread(target=self.__submit).start()
 
     def set_status(self, status):
         ''' Sets the frame status '''
@@ -640,13 +657,10 @@ class Main(tk.Frame):
                 filename = f'{now}-{item[1]}.json'
 
                 with open(filename, 'w') as out_file:
-                    json.dump(
-                        {'conversations': item[0], 'parameters': item[1]},
-                        out_file
-                    )
+                    json.dump({'conversations': item[0]}, out_file)
 
             self.set_status(GeneralStatus.IDLE)
-            self.set_message(f'Created {len(self.conversation_list)} file(s)')
+            self.set_message('Coversations were exported')
         else:
             self.set_status(GeneralStatus.ERROR)
             self.set_message('No coversations to export')
