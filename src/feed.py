@@ -618,7 +618,7 @@ class Main(tk.Frame):
 
             parent_tweet = conversation.pop()
 
-            if (self.tree.exists(parent_tweet['id'])):
+            if self.tree.exists(parent_tweet['id']):
                 self.set_status(GeneralStatus.ERROR)
                 self.set_message('Trying to add already existing tweet.')
                 raise ValueError('Trying to add already existing tweet.')
