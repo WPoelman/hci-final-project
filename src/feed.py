@@ -646,7 +646,7 @@ class Main(tk.Frame):
                     )
 
             self.set_status(GeneralStatus.IDLE)
-            self.set_message(f'Created {len(conversation_list)} files')
+            self.set_message(f'Created {len(self.conversation_list)} files')
         else:
             self.set_status(GeneralStatus.ERROR)
             self.set_message('No coversations to export')
