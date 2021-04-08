@@ -5,7 +5,8 @@
 File name:  feed.py
 Authors:    Erwin Meijerhof (*******)
             Wessel Poelman (S2976129)
-Date:       04-04-2021
+Date:       08-04-2021
+GitHub:     https://github.com/WPoelman/hci-final-project
 Description:
     The first part of Assignment 3 of the course Human Computer Interaction.
     This frame allows the user to specify filters for fetching a specific
