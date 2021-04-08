@@ -260,7 +260,7 @@ class TweepyApi:
 
                 self.set_status(GeneralStatus.RETRYING)
                 self.set_message((
-                    f'Conversation with length {conversation_len},'
+                    f'Conversation with length {conversation_len}, '
                     'trying again...'
                 ))
 
@@ -439,7 +439,7 @@ class Main(tk.Frame):
         self.tree = ttk.Treeview(self,
                                  columns=('tweet'),
                                  style='Custom.Treeview')
-        self.tree.column('tweet', width=600)
+        self.tree.column('tweet', width=500)
         self.tree.heading('tweet', text='Tweet')
         self.tree.bind("<Double-1>", self.on_tweet_click)
 
@@ -646,7 +646,7 @@ class Main(tk.Frame):
                     )
 
             self.set_status(GeneralStatus.IDLE)
-            self.set_message(f'Created {len(self.conversation_list)} files')
+            self.set_message(f'Created {len(self.conversation_list)} file(s)')
         else:
             self.set_status(GeneralStatus.ERROR)
             self.set_message('No coversations to export')
