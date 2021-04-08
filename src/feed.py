@@ -35,6 +35,7 @@ class GeneralStatus(Enum):
     ''' Enum used for indicating a status '''
     IDLE = 'idle'
     FETCHING = 'fetching'
+    RETRYING = 'retrying'
     PARSING = 'parsing'
     ERROR = 'error'
 
@@ -45,6 +46,7 @@ class TweepyApi:
         self.api = self.__create_api()
 
         self.status = GeneralStatus.IDLE
+        self.message = ''
 
         # Adapted from:
         # https://developer.twitter.com/en/docs/twitter-for-websites/supported-languages
@@ -105,38 +107,53 @@ class TweepyApi:
         ''' Sets the status of the api '''
         print(f'New status api: {status}')
         self.status = status
-        return status
+
+    def set_message(self, message):
+        ''' Sets an message message '''
+        print(f'New message api: {message}')
+        self.message = message
 
     def get_status(self):
         ''' Returns the status of the api '''
-        return self.status
+        return self.status.value
+
+    def get_message(self):
+        ''' Returns the latest message of the api '''
+        return self.message
 
     def __read_in_credentials(self, path):
         ''' Reads in twitter api credentials from the given path '''
         if not isfile(path):
             self.set_status(GeneralStatus.ERROR)
-            print('Path to credentials file does not exist.')
+            self.set_message('Path to credentials file does not exist.')
+
             return None
 
         with open(path, 'r') as f:
             credentials = {}
             for line in f.readlines():
-                key, value = line.strip().split('=')
-                credentials[key] = value
+                # Bit ugly, be we have no idea what files the user provides.
+                if '=' in line:
+                    items = line.strip().split('=')
+                    if len(items) == 2:
+                        credentials[items[0]] = items[1]
 
         required_keys = {'API_KEY', 'API_SECRET',
                          'ACCESS_TOKEN', 'ACCESS_SECRET'}
 
         if required_keys != credentials.keys():
             self.set_status(GeneralStatus.ERROR)
-            print('Not all needed keys are given or the format is wrong.')
+            self.set_message(
+                'Not all keys are given or the credentials format is wrong.'
+            )
+
             return None
 
         return credentials
 
     def is_busy(self):
         ''' Indicates if the api is busy '''
-        return (self.status != GeneralStatus.IDLE or
+        return (self.status != GeneralStatus.IDLE and
                 self.status != GeneralStatus.ERROR)
 
     def __create_api(self):
@@ -153,8 +170,11 @@ class TweepyApi:
 
         return tweepy.API(auth)
 
-    def __extract_converstation(self, response, acc=[]):
+    def __extract_converstation(self, response, acc=None):
         ''' Recursively extracts a conversation '''
+        if not acc:
+            acc = []
+
         self.set_status(GeneralStatus.PARSING)
 
         cleaned_item = {
@@ -169,8 +189,9 @@ class TweepyApi:
             new = self.api.get_status(
                 id=cleaned_item['in_reply_to_status_id']
             )._json
-        except (tweepy.error.TweepError, tweepy.error.RateLimitError):
+        except (tweepy.error.TweepError, tweepy.error.RateLimitError) as err:
             self.set_status(GeneralStatus.ERROR)
+            self.set_message(f'Tweepy error, {err}')
             return []
 
         # Exit condition is the main 'parent' of the initial tweet or the max
@@ -204,42 +225,59 @@ class TweepyApi:
             '''
         )
 
-        cursor = tweepy.Cursor(
-            self.api.search,
-            q=query,
-            lang=self.available_languages[language],
-            geocode=geocode
-        )
+        # This is not a very nice try-except, but the Tweepy package can throw
+        # an exception at strange places. For example, initializing the cursor
+        # might throw an exception, but not always, calling items() could also
+        # do it, and even accessing the _json. The exceptions are all from
+        # Tweepy and most of the time they are 400 status errors.
+        try:
+            cursor = tweepy.Cursor(
+                self.api.search,
+                q=query,
+                lang=self.available_languages[language],
+                geocode=geocode
+            )
 
-        for status in cursor.items():
-            response = status._json
+            for status in cursor.items():
+                response = status._json
 
-            # Search for a possible conversation candidate.
-            if not response['in_reply_to_status_id']:
-                continue
+                # Search for a possible conversation candidate.
+                if not response['in_reply_to_status_id']:
+                    continue
 
-            # Once we have a single conversation, we can extract it and stop
-            # searching.
-            conversation = self.__extract_converstation(response, [])
-            conversation_len = len(conversation)
+                # Once we have a single conversation, we can extract it and
+                # stop searching.
+                conversation = self.__extract_converstation(response, [])
+                conversation_len = len(conversation)
 
-            # We only want to find conversations with 3-10 turns, as per the
-            # assignment instructions. We cannot specify this in calling the
-            # Twitter api, so we just have to try again if we do not find it
-            # here.
-            if (conversation_len >= self.min_conv_len and
-                    conversation_len <= self.max_conv_len):
-                break
+                # We only want to find conversations with 3-10 turns, as per
+                # the assignment instructions. We cannot specify this in
+                # calling the Twitter api, so we just have to try again if we
+                # do not find it here.
+                if (conversation_len >= self.min_conv_len and
+                        conversation_len <= self.max_conv_len):
+                    break
 
-            print(
-                f'Conversation with length {conversation_len}, trying again...')
+                self.set_status(GeneralStatus.RETRYING)
+                self.set_message((
+                    f'Conversation with length {conversation_len},'
+                    'trying again...'
+                ))
+
+        except (tweepy.error.TweepError, tweepy.error.RateLimitError) as err:
+            self.set_status(GeneralStatus.ERROR)
+            self.set_message(f'Tweepy error, {err}')
+            return []
 
         if not conversation:
             self.set_status(GeneralStatus.ERROR)
-            print('No results found!')
+            self.set_message('No results found!')
             return []
 
         self.set_status(GeneralStatus.IDLE)
+        self.set_message(
+            f'Added new conversation with {len(conversation)} entries'
+        )
         return conversation
 
     def change_credentials(self, filepath):
@@ -252,7 +290,9 @@ class TweepyApi:
             self.credentials = credentials
             self.api = self.__create_api()
             self.set_status(GeneralStatus.IDLE)
-            print(f'Successfully changed credentials using file:\n{filepath}')
+            self.set_message(
+                f'Successfully changed credentials using file:\n{filepath}'
+            )
 
 
 class EditableList(tk.Frame):
@@ -350,11 +390,12 @@ class Main(tk.Frame):
 
         # -- Status indicator if the frame is busy --
         self.status = GeneralStatus.IDLE
+        self.message = ''
 
         self.status_text = tk.StringVar(self)
         self.status_label = ttk.Label(self, textvariable=self.status_text)
 
-        self.textwrapper = textwrap.TextWrapper(80).fill
+        self.textwrapper = textwrap.TextWrapper(60).fill
 
         # -- Tweet queue with parsed conversations --
         self.tweet_queue = queue.Queue()
@@ -383,7 +424,8 @@ class Main(tk.Frame):
         self.geocoder = Nominatim(user_agent='hci_final_project')
 
         # -- Submit filters to get conversation --
-        submit_button = tk.Button(self, text='submit', command=self.submit)
+        self.submit_button = tk.Button(
+            self, text='submit', command=self.submit)
 
         # -- Entry labels --
         langauge_label = tk.Label(self, text="Tweet language")
@@ -412,21 +454,21 @@ class Main(tk.Frame):
 
         self.search_terms_list.grid(
             row=0, column=0, columnspan=2, sticky='nsew')
-        self.language_select.grid(row=1, column=1, sticky='ne')
-        self.location_entry.grid(row=2, column=1, sticky='nsew')
-        self.radius_entry.grid(row=3, column=1, sticky='nsew')
-        self.status_label.grid(row=4, column=1, sticky='nsew')
+        self.status_label.grid(row=1, column=0, columnspan=2, sticky='nsew')
+        self.language_select.grid(row=2, column=1, sticky='nsew')
+        self.location_entry.grid(row=3, column=1, sticky='nsew')
+        self.radius_entry.grid(row=4, column=1, sticky='nsew')
 
-        langauge_label.grid(row=1, column=0, sticky='w')
-        location_label.grid(row=2, column=0, sticky='w')
-        radius_label.grid(row=3, column=0, sticky='w')
-        submit_button.grid(row=4, column=0, sticky='nsew')
+        langauge_label.grid(row=2, column=0, sticky='w')
+        location_label.grid(row=3, column=0, sticky='w')
+        radius_label.grid(row=4, column=0, sticky='w')
+        self.submit_button.grid(row=5, column=1, sticky='nsew')
 
         scroll.grid(row=0, column=2, rowspan=5, sticky='ens')
         self.tree.grid(row=0, column=2, rowspan=5, sticky='nsew')
 
         self.__update_treeview()
-        self.__start_poll_api_status()
+        self.__start_poll_system_status()
 
         self.grid(row=0, column=0, sticky='nsew')
 
@@ -437,14 +479,25 @@ class Main(tk.Frame):
         print(event)
         print("Clicked on: ", self.tree.item(self.tree.selection()[0]))
 
-    def __start_poll_api_status(self):
-        ''' Fires off the api status polling on a new thread '''
-        threading.Thread(target=self.poll_api_status).start()
+    def __start_poll_system_status(self):
+        ''' Fires off a new thread that polls the status of the system '''
+        threading.Thread(target=self.poll_system_status).start()
 
-    def poll_api_status(self):
-        ''' Polls the status of the tweepy api to see its status '''
-        self.status_text.set(f'Api status: {self.api.get_status().value}')
-        self.after(100, self.poll_api_status)
+    def poll_system_status(self):
+        ''' Polls the system status and creates a formatted string from it '''
+        self.status_text.set((
+            f'\nAPI:    status:  {self.api.get_status()}'
+            f'\n        message: {self.textwrapper(self.api.get_message())}\n'
+            f'\nWindow: status:  {self.get_status()}'
+            f'\n        message: {self.textwrapper(self.get_message())}'
+        ))
+
+        if self.is_busy() or self.api.is_busy():
+            self.submit_button['state'] = 'disabled'
+        else:
+            self.submit_button['state'] = 'active'
+
+        self.after(100, self.poll_system_status)
 
     def submit(self):
         ''' Fires off the fetching and parsing of new conversations in a
@@ -457,9 +510,22 @@ class Main(tk.Frame):
         print(f'New status main frame: {status}')
         self.status = status
 
+    def get_status(self):
+        ''' Gets the frame status '''
+        return self.status.value
+
+    def set_message(self, message):
+        ''' Sets the frame message '''
+        print(f'New message main frame: {message}')
+        self.message = message
+
+    def get_message(self):
+        ''' Gets the frame message '''
+        return self.message
+
     def is_busy(self):
         ''' Indicates if the frame is busy '''
-        return (self.status != GeneralStatus.IDLE or
+        return (self.status != GeneralStatus.IDLE and
                 self.status != GeneralStatus.ERROR)
 
     def __submit(self):
@@ -471,7 +537,9 @@ class Main(tk.Frame):
 
         location_query = self.location_entry.get()
 
-        # Clean the radius of any non numeric characters and set it back
+        # Clean the radius of any non numeric characters and set it back. This
+        # is somewhat tolerant for someone typing '20km' by accident for
+        # example as it would normalize it to '20' instead of giving an error.
         location_radius = ''.join(
             c for c in self.radius_entry.get() if c.isdigit()
         )
@@ -482,18 +550,33 @@ class Main(tk.Frame):
 
         if location_query and location_radius:
             geo = self.geocoder.geocode(location_query)
-            geo_query = f'{geo.latitude},{geo.longitude},{location_radius}km'
+            if geo:
+                geo_query = (
+                    f'{geo.latitude},{geo.longitude},{location_radius}km'
+                )
+            else:
+                self.location_entry.delete(0, tk.END)
 
         language = self.language.get()
 
         search_terms = self.search_terms_list.get_entries()
-        search_query = '&'.join(search_terms) if len(
-            search_terms) > 0 else None
+
+        if len(search_terms) == 1:
+            search_query = search_terms[0]
+        elif len(search_terms) > 1:
+            search_query = '&'.join(search_terms)
+        else:
+            search_query = None
 
         result = self.api.get_conversation(search_query, language, geo_query)
 
         if result:
-            self.conversation_list.append((result, search_query))
+            formatted_query = (
+                f'{language}'
+                f'{"&" + search_query if search_query else ""}'
+                f'{"&" + geo_query if geo_query else ""}'
+            )
+            self.conversation_list.append((result, formatted_query))
             self.tweet_queue.put(result)
 
         self.set_status(GeneralStatus.IDLE)
@@ -520,7 +603,8 @@ class Main(tk.Frame):
 
             if (self.tree.exists(parent_tweet['id'])):
                 self.set_status(GeneralStatus.ERROR)
-                return
+                self.set_message('Trying to add already existing tweet.')
+                raise ValueError('Trying to add already existing tweet.')
 
             self.tree.insert(
                 '',
@@ -540,7 +624,7 @@ class Main(tk.Frame):
                     values=[self.textwrapper(tweet['text'])],
                 )
 
-        except queue.Empty:
+        except (queue.Empty, ValueError):
             pass
 
         self.after(100, self.__update_treeview)
@@ -561,7 +645,11 @@ class Main(tk.Frame):
                         out_file
                     )
 
-        self.set_status(GeneralStatus.IDLE)
+            self.set_status(GeneralStatus.IDLE)
+            self.set_message(f'Created {len(conversation_list)} files')
+        else:
+            self.set_status(GeneralStatus.ERROR)
+            self.set_message('No coversations to export')
 
     def clean_up(self):
         ''' Waits for all threads from all widgets to close down and closes
