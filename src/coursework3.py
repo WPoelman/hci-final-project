@@ -894,10 +894,12 @@ class Feed(tk.Frame):
                                                language,
                                                geo_query)
 
+            safe = search_query if search_query and search_query != "*" else ""
+
             if result:
                 formatted_query = (
                     f'{language}'
-                    f'{"&" + search_query if search_query and search_query != "*" else ""}'
+                    f'{"&" + safe}'
                     f'{"&" + geo_query if geo_query else ""}'
                 )
                 self.conversation_list.append((result, formatted_query))
