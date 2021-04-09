@@ -747,10 +747,10 @@ class Feed(tk.Frame):
     def poll_system_status(self):
         ''' Polls the system status and creates a formatted string from it '''
         self.status_text.set((
-            f'\nAPI:    status:  {self.api.get_status()}'
-            f'\n        message: {self.status_textwrapper(self.api.get_message())}\n'
-            f'\nWindow: status:  {self.get_status()}'
-            f'\n        message: {self.status_textwrapper(self.get_message())}'
+            f'\nAPI status: {self.api.get_status()}'
+            f'\nAPI message: {self.status_textwrapper(self.api.get_message())}\n'
+            f'\nWindow status: {self.get_status()}'
+            f'\nWindow message: {self.status_textwrapper(self.get_message())}'
         ))
 
         if (self.api.status == GeneralStatus.ERROR or
@@ -934,10 +934,10 @@ class Feed(tk.Frame):
                 }, out_file)
 
             self.set_status(GeneralStatus.IDLE)
-            self.set_message('Coversations were exported')
+            self.set_message('Conversations were exported')
         else:
             self.set_status(GeneralStatus.ERROR)
-            self.set_message('No coversations to export')
+            self.set_message('No conversations to export')
 
     def clean_up(self):
         ''' Waits for all threads from all widgets to close down and closes
@@ -962,9 +962,13 @@ class Notebook(ttk.Notebook):
         # self.cd.pack(fill='both', expand=True)
 
         self.add(self.feed, text='Twitter Feed')
-        self.add(self.cd, text='Coversation Sentiments')
+        self.add(self.cd, text='Conversation Sentiments')
 
         self.grid(sticky='nsew')
+
+    def open_file(self):
+        self.cd.load_file()
+        self.select(self.cd)
 
     def clean_up(self):
         ''' Calls the cleanup functions on all child widgets '''
@@ -990,7 +994,7 @@ def main():
 
     file_menu = tk.Menu(menu_bar, tearoff=0)
     file_menu.add_command(label="Save", command=notebook.feed.save)
-    file_menu.add_command(label="Open", command=notebook.cd.load_file)
+    file_menu.add_command(label="Open", command=notebook.open_file)
     file_menu.add_command(label="Exit", command=notebook.clean_up)
 
     options_menu = tk.Menu(menu_bar, tearoff=0)
