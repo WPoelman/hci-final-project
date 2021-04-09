@@ -545,6 +545,12 @@ class Feed(tk.Frame):
             self.paused = False
             self.api.halt = False
             self.start_stop_button['text'] = 'Stop fetching'
+
+            self.tree.delete(*self.tree.get_children())
+            self.conversation_list = []
+            self.api.seen_tweet_ids = set()
+            self.tweet_queue.queue.clear()
+
             threading.Thread(target=self.__submit).start()
         else:
             self.paused = True
@@ -687,16 +693,15 @@ class Feed(tk.Frame):
         self.set_status(GeneralStatus.PARSING)
 
         if len(self.conversation_list) > 0:
-            for item in self.conversation_list:
+            now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            filename = f'{now}-{self.conversation_list[0][1]}.json'
 
-                now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                filename = f'{now}-{item[1]}.json'
-
-                print(f'Exporting conversation with len: {len(item)}')
-                with open(filename, 'w') as out_file:
-                    json.dump({
-                        'conversations': [t for t in item[0]]
-                    }, out_file)
+            with open(filename, 'w') as out_file:
+                json.dump({
+                    'conversations': [conv[0]
+                                      for conv in self.conversation_list
+                                      if conv[0]]
+                }, out_file)
 
             self.set_status(GeneralStatus.IDLE)
             self.set_message('Coversations were exported')
