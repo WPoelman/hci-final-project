@@ -305,7 +305,7 @@ class GeneralStatus(Enum):
 
 
 class TweepyApi:
-    def __init__(self, credentials_path='../credentials.txt'):
+    def __init__(self, credentials_path='credentials.txt'):
         self.status = GeneralStatus.IDLE
         self.message = ''
 
@@ -580,9 +580,7 @@ class TweepyApi:
             self.credentials = credentials
             self.api = self.__create_api()
             self.set_status(GeneralStatus.IDLE)
-            self.set_message(
-                f'Successfully changed credentials using file:\n{filepath}'
-            )
+            self.set_message('Successfully changed credentials file.')
 
 
 class EditableList(tk.Frame):
