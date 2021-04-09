@@ -914,10 +914,10 @@ class Feed(tk.Frame):
                 }, out_file)
 
             self.set_status(GeneralStatus.IDLE)
-            self.set_message('Coversations were exported')
+            self.set_message('Conversations were exported')
         else:
             self.set_status(GeneralStatus.ERROR)
-            self.set_message('No coversations to export')
+            self.set_message('No conversations to export')
 
     def clean_up(self):
         ''' Waits for all threads from all widgets to close down and closes
@@ -942,7 +942,7 @@ class Notebook(ttk.Notebook):
         # self.cd.pack(fill='both', expand=True)
 
         self.add(self.feed, text='Twitter Feed')
-        self.add(self.cd, text='Coversation Sentiments')
+        self.add(self.cd, text='Conversation Sentiments')
 
         self.grid(sticky='nsew')
 
