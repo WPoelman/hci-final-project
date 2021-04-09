@@ -3,9 +3,9 @@
 
 """
 File name:  feed.py
-Authors:    Erwin Meijerhof (*******)
-            Wessel Poelman (S2976129)
-Date:       08-04-2021
+Authors:    Erwin Meijerhof (S2377012)
+            Wessel Poelman  (S2976129)
+Date:       09-04-2021
 GitHub:     https://github.com/WPoelman/hci-final-project
 Description:
     The first part of Assignment 3 of the course Human Computer Interaction.
@@ -47,6 +47,7 @@ class TweepyApi:
         self.message = ''
 
         self.seen_tweet_ids = set()
+        self.halt = False
 
         # Adapted from:
         # https://developer.twitter.com/en/docs/twitter-for-websites/supported-languages
@@ -183,6 +184,9 @@ class TweepyApi:
         if not acc:
             acc = []
 
+        if self.halt:
+            return []
+
         self.set_status(GeneralStatus.PARSING)
 
         cleaned_item = {
@@ -267,9 +271,18 @@ class TweepyApi:
 
                     ids = {i['id'] for i in conversation}
 
-                    if not ids.issubset(self.seen_tweet_ids):
+                    if ids.issubset(self.seen_tweet_ids):
+                        self.set_status(GeneralStatus.RETRYING)
+                        self.set_message(
+                            'Found already existing tweets, trying again...'
+                        )
+                        continue
+                    else:
                         self.seen_tweet_ids.update(ids)
                         break
+
+                if self.halt:
+                    break
 
                 self.set_status(GeneralStatus.RETRYING)
                 self.set_message((
@@ -284,7 +297,7 @@ class TweepyApi:
 
         if not conversation:
             self.set_status(GeneralStatus.ERROR)
-            self.set_message('No results found!')
+            self.set_message('No results found or stopped fetching!')
             return []
 
         self.set_status(GeneralStatus.IDLE)
@@ -393,7 +406,7 @@ class EditableList(tk.Frame):
         self.status_text.set('')
 
 
-class Main(tk.Frame):
+class Feed(tk.Frame):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent)
         self.clean_up_parent = parent.destroy
@@ -411,6 +424,7 @@ class Main(tk.Frame):
         self.paused = True
 
         self.textwrapper = textwrap.TextWrapper(60).fill
+        self.status_textwrapper = textwrap.TextWrapper(30).fill
 
         # -- Tweet queue with parsed conversations --
         self.tweet_queue = queue.Queue()
@@ -506,10 +520,16 @@ class Main(tk.Frame):
         ''' Polls the system status and creates a formatted string from it '''
         self.status_text.set((
             f'\nAPI:    status:  {self.api.get_status()}'
-            f'\n        message: {self.textwrapper(self.api.get_message())}\n'
+            f'\n        message: {self.status_textwrapper(self.api.get_message())}\n'
             f'\nWindow: status:  {self.get_status()}'
-            f'\n        message: {self.textwrapper(self.get_message())}'
+            f'\n        message: {self.status_textwrapper(self.get_message())}'
         ))
+
+        if (self.api.status == GeneralStatus.ERROR or
+                self.status == GeneralStatus.ERROR):
+            self.paused = True
+            self.start_stop_button['text'] = 'Start fetching'
+
         self.after(100, self.poll_system_status)
 
     def toggle_pause(self):
@@ -522,11 +542,13 @@ class Main(tk.Frame):
             return
 
         if self.paused:
-            self.paused = not self.paused
+            self.paused = False
+            self.api.halt = False
             self.start_stop_button['text'] = 'Stop fetching'
             threading.Thread(target=self.__submit).start()
         else:
-            self.paused = not self.paused
+            self.paused = True
+            self.api.halt = True
             self.start_stop_button['text'] = 'Start fetching'
 
     def set_status(self, status):
@@ -634,7 +656,6 @@ class Main(tk.Frame):
             parent_tweet = conversation.pop()
 
             if self.tree.exists(parent_tweet['id']):
-                self.set_status(GeneralStatus.ERROR)
                 self.set_message('Trying to add already existing tweet.')
                 raise ValueError('Trying to add already existing tweet.')
 
@@ -696,6 +717,28 @@ class Main(tk.Frame):
         return True
 
 
+class Notebook(ttk.Notebook):
+    def __init__(self, parent, *args, **kwargs):
+        super().__init__(parent)
+        self.parent_cleanup = parent.destroy
+
+        self.feed = Feed(self)
+        self.analysis = Feed(self)
+
+        self.add(self.feed, text='Twitter Feed')
+        self.add(self.analysis, text='Coversation Sentiments')
+
+        self.grid(sticky='nsew')
+
+    def clean_up(self):
+        ''' Calls the cleanup functions on all comment list widgets '''
+        while self.feed.is_busy():
+            self.feed.clean_up()
+            time.sleep(0.1)
+
+        self.parent_cleanup()
+
+
 def main():
     root = tk.Tk()
     root.title('HCI - Final Project')
@@ -704,25 +747,27 @@ def main():
     tk.Grid.rowconfigure(root, 0, weight=1)
     tk.Grid.columnconfigure(root, 0, weight=1)
 
-    m = Main(root)
+    notebook = Notebook(root)
 
     # -- Menu-bar  --
     menu_bar = tk.Menu(root)
 
     file_menu = tk.Menu(menu_bar, tearoff=0)
-    file_menu.add_command(label="Save", command=m.save)
-    file_menu.add_command(label="Exit", command=m.clean_up)
+    file_menu.add_command(label="Save", command=notebook.feed.save)
+    file_menu.add_command(label="Open")
+    file_menu.add_command(label="Exit", command=notebook.clean_up)
 
     options_menu = tk.Menu(menu_bar, tearoff=0)
-    options_menu.add_command(label="Credentials", command=m.new_credentials)
+    options_menu.add_command(label="Credentials",
+                             command=notebook.feed.new_credentials)
 
     menu_bar.add_cascade(label="File", menu=file_menu)
     menu_bar.add_cascade(label="Options", menu=options_menu)
 
     root.config(menu=menu_bar)
-    root.protocol("WM_DELETE_WINDOW", m.clean_up)
+    root.protocol("WM_DELETE_WINDOW", notebook.clean_up)
 
-    m.mainloop()
+    notebook.mainloop()
 
 
 if __name__ == '__main__':

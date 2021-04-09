@@ -11,7 +11,7 @@ Final project for the course Human Computer Interaction.
 ## To-do
 
 - Scaling in part 1
-- Livestream tweets in part 1
+- ~~Livestream tweets in part 1~~
 - Change multiple combinations of parameters per session to single combination per session
 
 - Add parameter menu to treeview for part 2
