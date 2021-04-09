@@ -157,12 +157,14 @@ class ConversationDisplay(tk.Frame):
             return
 
         with open(path) as f:
-            #try:
-            json_convos = json.load(f)["conversations"]
-            self.conversations = [Conversation(cv) for cv in json_convos]
-            self.view.update(self.conversations)
-            #except: tk.messagebox.showerror("Error", "Invalid conversation file." + " Please try a different document.")
-            #self.load_file()
+            try:
+                json_convos = json.load(f)["conversations"]
+                self.conversations = [Conversation(cv) for cv in json_convos]
+                self.view.update(self.conversations)
+            except: 
+                tk.messagebox.showerror("Error", "Invalid conversation file." + 
+                                        " Please try a different document.")
+                self.load_file()
 
 
     def filter(self):
