@@ -49,6 +49,7 @@ class Conversation:
         self.conversation_sentiment = self.__conv_sent()
 
     def __score_tweets(self):
+        ''' Returns list of sentiment score of individual tweets in conversation '''
         scores = []
         for tweet in self.tweets:
             scores.append(self.sid.polarity_scores(tweet)["compound"])
@@ -56,6 +57,7 @@ class Conversation:
         return scores
 
     def __sent_diffs(self):
+        ''' Returns list of differences between sentiments for responses '''
         diffs = []
         for i in range(1, self.number_of_turns()):
             diff = self.sentiment_scores[i-1] - self.sentiment_scores[i]
@@ -64,6 +66,7 @@ class Conversation:
         return diffs
 
     def __conv_sent(self):
+        ''' Returns sentiment of conversation '''
         if all([x > 0 for x in self.sentiment_diffs]):
             return "Negative"
         elif all([x < 0 for x in self.sentiment_diffs]):
@@ -72,12 +75,15 @@ class Conversation:
             return "Neutral"
 
     def unique_participants(self):
+        ''' Returns number of unique participants in conversation '''
         return len(set(self.authors))
 
     def number_of_turns(self):
+        ''' Returns number of turns in conversation '''
         return len(self.tweets)
 
     def lowest_sentiment_diff(self):
+        ''' Returns minimal difference in sentiment between turns '''
         return min([abs(x) for x in self.sentiment_diffs])
 
 
@@ -107,9 +113,11 @@ class ConversationTreeview(tk.Frame):
         self.scrollbar.pack(side='right', fill='y')
 
     def __clear(self):
+        ''' Clears contents of treeview widget '''
         self.tree.delete(*self.tree.get_children())
 
     def wrap_text(self, text):
+        ''' Splits longer tweets into two lines '''
         text_length = len(text)
         if not text_length > 50:
             return text
@@ -126,6 +134,7 @@ class ConversationTreeview(tk.Frame):
         return ' '.join(line1) + '\n' + ' '.join(line2)
 
     def update(self, conversations):
+        ''' Clear treeview widget and add new conversations '''
         self.__clear()
 
         for convo in conversations:
@@ -187,7 +196,7 @@ class ConversationDisplay(tk.Frame):
                                              *self.option_list)
 
         self.sent_thresh_scale = tk.Scale(self.filter_menu, from_=0, to=0.5,
-                                          label="Sentiment threshold:",
+                                          label="Min sentiment threshold:",
                                           orient="horizontal",
                                           resolution=0.01)
         self.sent_thresh_scale.set(0)
@@ -208,6 +217,9 @@ class ConversationDisplay(tk.Frame):
         self.view.pack(side='right', fill='both', expand=True)
 
     def __filter_conditions(self, convo):
+        ''' Checks conditions for filter function and returns boolean
+            of result
+        '''
         min_part = convo.unique_participants() >= self.min_part_scale.get()
         max_part = convo.unique_participants() <= self.max_part_scale.get()
         min_turn = convo.number_of_turns() >= self.min_turn_scale.get()
@@ -220,6 +232,7 @@ class ConversationDisplay(tk.Frame):
                 max_turn and s_change and s_thr)
 
     def load_file(self):
+        ''' Loads conversations from file and updates treeview '''
         path = fd.askopenfilename(parent=self,
                                   filetypes=(("JSON files", "*.json"),))
         if not path:
@@ -236,22 +249,35 @@ class ConversationDisplay(tk.Frame):
                 self.load_file()
 
     def check_max_part_scale(self, event):
+        ''' Checks if max participant slider is lower than min participant
+            slider and changes value accordingly 
+        '''
         if self.min_part_scale.get() > self.max_part_scale.get():
             self.max_part_scale.set(self.min_part_scale.get())
 
     def check_min_part_scale(self, event):
+        ''' Checks if min participant slider is higher than max participant
+            slider and changes value accordingly 
+        '''
         if self.min_part_scale.get() > self.max_part_scale.get():
             self.min_part_scale.set(self.max_part_scale.get())
 
     def check_max_turn_scale(self, event):
+        ''' Checks if max turn slider is lower than min turn slider and 
+            changes value accordingly 
+        '''
         if self.min_turn_scale.get() > self.max_turn_scale.get():
             self.max_turn_scale.set(self.min_turn_scale.get())
 
     def check_min_turn_scale(self, event):
+        ''' Checks if min turn slider is higher than max turn slider and 
+            changes value accordingly 
+        '''
         if self.min_turn_scale.get() > self.max_turn_scale.get():
             self.min_turn_scale.set(self.max_turn_scale.get())
 
     def filter(self):
+        ''' Returns conversations according to filter settings '''
         filtered_convos = []
         for convo in self.conversations:
             if self.__filter_conditions(convo):
