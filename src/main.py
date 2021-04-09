@@ -946,6 +946,10 @@ class Notebook(ttk.Notebook):
 
         self.grid(sticky='nsew')
 
+    def open_file(self):
+        self.cd.load_file()
+        self.select(self.cd)
+
     def clean_up(self):
         ''' Calls the cleanup functions on all child widgets '''
         while self.feed.is_busy():
@@ -970,7 +974,7 @@ def main():
 
     file_menu = tk.Menu(menu_bar, tearoff=0)
     file_menu.add_command(label="Save", command=notebook.feed.save)
-    file_menu.add_command(label="Open", command=notebook.cd.load_file)
+    file_menu.add_command(label="Open", command=notebook.open_file)
     file_menu.add_command(label="Exit", command=notebook.clean_up)
 
     options_menu = tk.Menu(menu_bar, tearoff=0)
