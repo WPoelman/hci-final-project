@@ -2,15 +2,18 @@
 # -*- coding: utf-8 -*-
 
 """
-File name:  feed.py
+File name:  coursework3.py
 Authors:    Erwin Meijerhof (S2377012)
             Wessel Poelman  (S2976129)
 Date:       09-04-2021
 GitHub:     https://github.com/WPoelman/hci-final-project
 Description:
-    The first part of Assignment 3 of the course Human Computer Interaction.
-    This frame allows the user to specify filters for fetching a specific
-    Twitter conversation. This conversation is also shown.
+    Assignment 3 for the course Human Computer Interaction.
+    This program allows the user to specify filters for fetching specific
+    Twitter conversation. These conversations are shown and can be exported to
+    a json file. These types of json files can also be imported into the
+    program to be used in sentiment analysis. The results of this sentiment
+    analysis can be filtered as well.
 Usage:
     python feed.py
 """
