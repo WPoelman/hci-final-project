@@ -234,7 +234,7 @@ class ConversationDisplay(tk.Frame):
                 tk.messagebox.showerror("Error", "Invalid conversation file." +
                                         " Please try a different document.")
                 self.load_file()
-    
+
     def check_max_part_scale(self, event):
         if self.min_part_scale.get() > self.max_part_scale.get():
             self.max_part_scale.set(self.min_part_scale.get())
@@ -967,8 +967,19 @@ class Notebook(ttk.Notebook):
         self.grid(sticky='nsew')
 
     def open_file(self):
-        self.cd.load_file()
+        ''' Opens a file for sentiment analysis '''
         self.select(self.cd)
+        self.cd.load_file()
+
+    def save(self):
+        ''' Saves the current conversations to a file '''
+        self.select(self.feed)
+        self.feed.save()
+
+    def new_credentials(self):
+        ''' Asks the user to put in new credentials '''
+        self.select(self.feed)
+        self.feed.new_credentials()
 
     def clean_up(self):
         ''' Calls the cleanup functions on all child widgets '''
@@ -993,13 +1004,13 @@ def main():
     menu_bar = tk.Menu(root)
 
     file_menu = tk.Menu(menu_bar, tearoff=0)
-    file_menu.add_command(label="Save", command=notebook.feed.save)
+    file_menu.add_command(label="Save", command=notebook.save)
     file_menu.add_command(label="Open", command=notebook.open_file)
     file_menu.add_command(label="Exit", command=notebook.clean_up)
 
     options_menu = tk.Menu(menu_bar, tearoff=0)
     options_menu.add_command(label="Credentials",
-                             command=notebook.feed.new_credentials)
+                             command=notebook.new_credentials)
 
     menu_bar.add_cascade(label="File", menu=file_menu)
     menu_bar.add_cascade(label="Options", menu=options_menu)
