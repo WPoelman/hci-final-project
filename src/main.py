@@ -727,10 +727,10 @@ class Feed(tk.Frame):
     def poll_system_status(self):
         ''' Polls the system status and creates a formatted string from it '''
         self.status_text.set((
-            f'\nAPI:    status:  {self.api.get_status()}'
-            f'\n        message: {self.status_textwrapper(self.api.get_message())}\n'
-            f'\nWindow: status:  {self.get_status()}'
-            f'\n        message: {self.status_textwrapper(self.get_message())}'
+            f'\nAPI status: {self.api.get_status()}'
+            f'\nAPI message: {self.status_textwrapper(self.api.get_message())}\n'
+            f'\nWindow status: {self.get_status()}'
+            f'\nWindow message: {self.status_textwrapper(self.get_message())}'
         ))
 
         if (self.api.status == GeneralStatus.ERROR or
