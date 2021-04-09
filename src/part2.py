@@ -2,10 +2,13 @@
 
 import json
 import tkinter as tk
-import tkinter.ttk as ttk
 import tkinter.filedialog as fd
+import tkinter.ttk as ttk
 
+from nltk import download
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
+
+download('vader_lexicon')
 
 
 class Conversation:
@@ -88,10 +91,9 @@ class ConversationTreeview(tk.Frame):
                                        values=[convo.authors[0],
                                                convo.conversation_sentiment])
             for i in range(1, convo.number_of_turns()):
-                self.tree.insert(root_tw, 'end', text = convo.tweets[i],
+                self.tree.insert(root_tw, 'end', text=convo.tweets[i],
                                  values=[convo.authors[i],
                                          convo.sentiment_diffs[i-1]])
-
 
 
 class ConversationDisplay(tk.Frame):
@@ -106,7 +108,7 @@ class ConversationDisplay(tk.Frame):
                                        label="Min participants:",
                                        orient="horizontal")
         self.min_part_scale.set(2)
-        
+
         self.max_part_scale = tk.Scale(self.filter_menu, from_=2, to=10,
                                        label="Max participants:",
                                        orient="horizontal")
@@ -118,14 +120,14 @@ class ConversationDisplay(tk.Frame):
         self.option_list = ["All", "Positive", "Negative", "Neutral"]
         self.sent_change_var = tk.StringVar()
         self.sent_change_var.set(self.option_list[0])
-        self.sent_change_opt = tk.OptionMenu(self.filter_menu, 
+        self.sent_change_opt = tk.OptionMenu(self.filter_menu,
                                              self.sent_change_var,
                                              *self.option_list)
 
         self.sent_thresh_scale = tk.Scale(self.filter_menu, from_=0, to=0.5,
                                           label="Sentiment threshold:",
                                           orient="horizontal",
-                                          resolution=0.01) 
+                                          resolution=0.01)
         self.sent_thresh_scale.set(0)
 
         self.filter_button = tk.Button(self.filter_menu, text="Filter",
@@ -137,14 +139,14 @@ class ConversationDisplay(tk.Frame):
         self.sent_change_opt.pack(fill='x')
         self.sent_thresh_scale.pack(fill='x')
         self.filter_button.pack(fill='x')
-                                         
+
         self.filter_menu.pack(side='left', fill='both')
         self.view.pack(side='right', fill='both', expand=True)
 
     def __filter_conditions(self, convo):
         min_part = convo.unique_participants() >= self.min_part_scale.get()
         max_part = convo.unique_participants() <= self.max_part_scale.get()
-        s_change = (self.sent_change_var.get() == "All" or 
+        s_change = (self.sent_change_var.get() == "All" or
                     self.sent_change_var.get() == convo.conversation_sentiment)
         s_thr = convo.lowest_sentiment_diff() >= self.sent_thresh_scale.get()
 
@@ -165,7 +167,6 @@ class ConversationDisplay(tk.Frame):
                 tk.messagebox.showerror("Error", "Invalid conversation file." + 
                                         " Please try a different document.")
                 self.load_file()
-
 
     def filter(self):
         filtered_convos = []

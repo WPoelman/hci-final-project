@@ -657,7 +657,7 @@ class Main(tk.Frame):
                 filename = f'{now}-{item[1]}.json'
 
                 with open(filename, 'w') as out_file:
-                    json.dump({'conversations': item[0]}, out_file)
+                    json.dump({'conversations': [item[0]]}, out_file)
 
             self.set_status(GeneralStatus.IDLE)
             self.set_message('Coversations were exported')
