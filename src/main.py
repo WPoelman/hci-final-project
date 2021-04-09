@@ -847,7 +847,7 @@ class Feed(tk.Frame):
         elif len(search_terms) > 1:
             search_query = '&'.join(search_terms)
         else:
-            search_query = None
+            search_query = '*'
 
         self.start_fetching(search_query, language, geo_query)
 
@@ -861,7 +861,7 @@ class Feed(tk.Frame):
             if result:
                 formatted_query = (
                     f'{language}'
-                    f'{"&" + search_query if search_query else ""}'
+                    f'{"&" + search_query if search_query and search_query != "*" else ""}'
                     f'{"&" + geo_query if geo_query else ""}'
                 )
                 self.conversation_list.append((result, formatted_query))
