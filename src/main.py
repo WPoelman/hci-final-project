@@ -43,7 +43,7 @@ class Conversation:
 
     def __init__(self, data):
         self.tweets = [tweet["text"] for tweet in data[::-1]]
-        self.authors = [tweet["user"]["name"] for tweet in data[::-1]]
+        self.authors = [tweet["user"]["screen_name"] for tweet in data[::-1]]
         self.sentiment_scores = self.__score_tweets()
         self.sentiment_diffs = self.__sent_diffs()
         self.conversation_sentiment = self.__conv_sent()
@@ -96,8 +96,8 @@ class ConversationTreeview(tk.Frame):
         self.scrollbar.configure(command=self.tree.yview)
         self.tree.configure(yscrollcommand=self.scrollbar.set)
 
-        self.tree.column('#1', width=120, stretch=0)
-        self.tree.column('#2', width=120, stretch=0)
+        self.tree.column('#1', width=140, stretch=0)
+        self.tree.column('#2', width=100, stretch=0)
 
         self.tree.heading('#0', text='Tweet')
         self.tree.heading('#1', text='Author')
@@ -210,8 +210,8 @@ class ConversationDisplay(tk.Frame):
     def __filter_conditions(self, convo):
         min_part = convo.unique_participants() >= self.min_part_scale.get()
         max_part = convo.unique_participants() <= self.max_part_scale.get()
-        min_turn = convo.number_of_turns() > self.min_turn_scale.get()
-        max_turn = convo.number_of_turns() > self.max_turn_scale.get()
+        min_turn = convo.number_of_turns() >= self.min_turn_scale.get()
+        max_turn = convo.number_of_turns() <= self.max_turn_scale.get()
         s_change = (self.sent_change_var.get() == "All" or
                     self.sent_change_var.get() == convo.conversation_sentiment)
         s_thr = convo.lowest_sentiment_diff() >= self.sent_thresh_scale.get()
