@@ -52,7 +52,9 @@ class Conversation:
         self.conversation_sentiment = self.__conv_sent()
 
     def __score_tweets(self):
-        ''' Returns list of sentiment score of individual tweets in conversation '''
+        ''' Returns list of sentiment score of individual tweets in
+            conversation
+        '''
         scores = []
         for tweet in self.tweets:
             scores.append(self.sid.polarity_scores(tweet)["compound"])
@@ -203,13 +205,13 @@ class ConversationDisplay(tk.Frame):
                                              *self.option_list)
 
         self.sent_thresh_scale = tk.Scale(self.filter_menu, from_=0, to=0.5,
-                                          label="Min sentiment threshold:",
+                                          label="Sentiment change threshold:",
                                           orient="horizontal",
                                           resolution=0.01)
         self.sent_thresh_scale.set(0)
 
         self.filter_button = tk.Button(self.filter_menu, text="Filter",
-                                       command=self.filter, width=20)
+                                       command=self.filter, width=22)
 
         self.min_part_scale.pack(fill='x')
         self.max_part_scale.pack(fill='x')
@@ -250,7 +252,7 @@ class ConversationDisplay(tk.Frame):
                 json_convos = json.load(f)["conversations"]
                 self.conversations = [Conversation(cv) for cv in json_convos]
                 self.view.update(self.conversations)
-            except:
+            except Exception:
                 tk.messagebox.showerror("Error", "Invalid conversation file." +
                                         " Please try a different document.")
                 self.load_file()
@@ -311,7 +313,7 @@ class TweepyApi:
         self.halt = False
 
         # Adapted from:
-        # https://developer.twitter.com/en/docs/ \ 
+        # https://developer.twitter.com/en/docs/ \
         # twitter-for-websites/supported-languages
         self.available_languages = {
             'English':                  'en',
