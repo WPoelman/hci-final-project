@@ -35,11 +35,11 @@ class Conversation:
 
     def __conv_sent(self):
         if all([x > 0 for x in self.sentiment_diffs]):
-            return "negative"
+            return "Negative"
         elif all([x < 0 for x in self.sentiment_diffs]):
-            return "positive"
+            return "Positive"
         else:
-            return "neutral"
+            return "Neutral"
 
     def unique_participants(self):
         return len(set(self.authors))
@@ -70,8 +70,15 @@ class ConversationTreeview(tk.Frame):
         self.tree.pack(side='left', fill='both', expand=True)
         self.scrollbar.pack(side='right', fill='y')
 
+        self.selected_items = []
+        self.tree.bind("<<TreeviewSelect>>", self.on_select)
+
     def __clear(self):
         self.tree.delete(*self.tree.get_children())
+
+    def on_select(self, event):
+        for item in self.tree.selection():
+            print(self.tree.item(item, "text"))
 
     def update(self, conversations):
         self.__clear()
@@ -82,8 +89,9 @@ class ConversationTreeview(tk.Frame):
                                                convo.conversation_sentiment])
             for i in range(1, convo.number_of_turns()):
                 self.tree.insert(root_tw, 'end', text = convo.tweets[i],
-                                 values=[convo.authors[i], 
-                                         convo.sentiment_scores[i]])
+                                 values=[convo.authors[i],
+                                         convo.sentiment_diffs[i-1]])
+
 
 
 class ConversationDisplay(tk.Frame):
@@ -91,19 +99,79 @@ class ConversationDisplay(tk.Frame):
         super().__init__(parent)
         self.conversations = []
 
+        self.filter_menu = tk.Frame(self)
         self.view = ConversationTreeview(self)
+
+        self.min_part_scale = tk.Scale(self.filter_menu, from_=2, to=10,
+                                       label="Min participants:",
+                                       orient="horizontal")
+        self.min_part_scale.set(2)
+        
+        self.max_part_scale = tk.Scale(self.filter_menu, from_=2, to=10,
+                                       label="Max participants:",
+                                       orient="horizontal")
+        self.max_part_scale.set(10)
+
+        self.sent_change_label = tk.Label(self.filter_menu, anchor="w",
+                                          text="Change in sentiment:",
+                                          padx="7")
+        self.option_list = ["All", "Positive", "Negative", "Neutral"]
+        self.sent_change_var = tk.StringVar()
+        self.sent_change_var.set(self.option_list[0])
+        self.sent_change_opt = tk.OptionMenu(self.filter_menu, 
+                                             self.sent_change_var,
+                                             *self.option_list)
+
+        self.sent_thresh_scale = tk.Scale(self.filter_menu, from_=0, to=0.5,
+                                          label="Sentiment threshold:",
+                                          orient="horizontal",
+                                          resolution=0.01) 
+        self.sent_thresh_scale.set(0)
+
+        self.filter_button = tk.Button(self.filter_menu, text="Filter",
+                                       command=self.filter, width=20)
+
+        self.min_part_scale.pack(fill='x')
+        self.max_part_scale.pack(fill='x')
+        self.sent_change_label.pack(fill='x')
+        self.sent_change_opt.pack(fill='x')
+        self.sent_thresh_scale.pack(fill='x')
+        self.filter_button.pack(fill='x')
+                                         
+        self.filter_menu.pack(side='left', fill='both')
         self.view.pack(side='right', fill='both', expand=True)
 
+    def __filter_conditions(self, convo):
+        min_part = convo.unique_participants() >= self.min_part_scale.get()
+        max_part = convo.unique_participants() <= self.max_part_scale.get()
+        s_change = (self.sent_change_var.get() == "All" or 
+                    self.sent_change_var.get() == convo.conversation_sentiment)
+        s_thr = convo.lowest_sentiment_diff() >= self.sent_thresh_scale.get()
+
+        return (min_part and max_part and s_change and s_thr)
 
     def load_file(self):
         path = fd.askopenfilename(parent=self,
-                                  filetypes=(("JSON files", "*.json"),
-                                             ("All files", "*")))
-        with open(path) as f:
-            json_convos = json.load(f)["conversations"]
+                                  filetypes=(("JSON files", "*.json"),))
+        if not path:
+            return
 
-        self.conversations = [Conversation(convo) for convo in json_convos]
-        self.view.update(self.conversations)
+        with open(path) as f:
+            #try:
+            json_convos = json.load(f)["conversations"]
+            self.conversations = [Conversation(cv) for cv in json_convos]
+            self.view.update(self.conversations)
+            #except: tk.messagebox.showerror("Error", "Invalid conversation file." + " Please try a different document.")
+            #self.load_file()
+
+
+    def filter(self):
+        filtered_convos = []
+        for convo in self.conversations:
+            if self.__filter_conditions(convo):
+                filtered_convos.append(convo)
+
+        self.view.update(filtered_convos)
 
 
 if __name__ == '__main__':
