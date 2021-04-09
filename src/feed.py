@@ -20,6 +20,7 @@ import json
 import queue
 import textwrap
 import threading
+import time
 import tkinter as tk
 import tkinter.filedialog as fd
 import tkinter.ttk as ttk
@@ -407,6 +408,8 @@ class Main(tk.Frame):
         self.status_text = tk.StringVar(self)
         self.status_label = ttk.Label(self, textvariable=self.status_text)
 
+        self.paused = True
+
         self.textwrapper = textwrap.TextWrapper(60).fill
 
         # -- Tweet queue with parsed conversations --
@@ -435,9 +438,10 @@ class Main(tk.Frame):
         self.radius_entry = tk.Entry(self)
         self.geocoder = Nominatim(user_agent='hci_final_project')
 
-        # -- Submit filters to get conversation --
-        self.submit_button = tk.Button(
-            self, text='submit', command=self.submit)
+        # -- Start fetching using the current filters to get conversation --
+        self.start_stop_button = tk.Button(self,
+                                           text='Start fetching',
+                                           command=self.toggle_pause)
 
         # -- Entry labels --
         langauge_label = tk.Label(self, text="Tweet language")
@@ -465,8 +469,10 @@ class Main(tk.Frame):
         tk.Grid.rowconfigure(self, 0, weight=1)
         tk.Grid.columnconfigure(self, 0, weight=1)
 
-        self.search_terms_list.grid(
-            row=0, column=0, columnspan=2, sticky='nsew')
+        self.search_terms_list.grid(row=0,
+                                    column=0,
+                                    columnspan=2,
+                                    sticky='nsew')
         self.status_label.grid(row=1, column=0, columnspan=2, sticky='nsew')
         self.language_select.grid(row=2, column=1, sticky='nsew')
         self.location_entry.grid(row=3, column=1, sticky='nsew')
@@ -475,7 +481,7 @@ class Main(tk.Frame):
         langauge_label.grid(row=2, column=0, sticky='w')
         location_label.grid(row=3, column=0, sticky='w')
         radius_label.grid(row=4, column=0, sticky='w')
-        self.submit_button.grid(row=5, column=1, sticky='nsew')
+        self.start_stop_button.grid(row=5, column=1, sticky='nsew')
 
         scroll.grid(row=0, column=2, rowspan=6, sticky='ens')
         self.tree.grid(row=0, column=2, rowspan=6, sticky='nsew')
@@ -504,23 +510,24 @@ class Main(tk.Frame):
             f'\nWindow: status:  {self.get_status()}'
             f'\n        message: {self.textwrapper(self.get_message())}'
         ))
-
-        if self.is_busy() or self.api.is_busy():
-            self.submit_button['state'] = 'disabled'
-        else:
-            self.submit_button['state'] = 'active'
-
         self.after(100, self.poll_system_status)
 
-    def submit(self):
+    def toggle_pause(self):
         ''' Fires off the fetching and parsing of new conversations in a
             new thread.
         '''
         if not self.api:
             self.set_status(GeneralStatus.ERROR)
             self.set_message('No credentials file provided, please add one.')
-        else:
+            return
+
+        if self.paused:
+            self.paused = not self.paused
+            self.start_stop_button['text'] = 'Stop fetching'
             threading.Thread(target=self.__submit).start()
+        else:
+            self.paused = not self.paused
+            self.start_stop_button['text'] = 'Start fetching'
 
     def set_status(self, status):
         ''' Sets the frame status '''
@@ -585,16 +592,24 @@ class Main(tk.Frame):
         else:
             search_query = None
 
-        result = self.api.get_conversation(search_query, language, geo_query)
+        self.start_fetching(search_query, language, geo_query)
 
-        if result:
-            formatted_query = (
-                f'{language}'
-                f'{"&" + search_query if search_query else ""}'
-                f'{"&" + geo_query if geo_query else ""}'
-            )
-            self.conversation_list.append((result, formatted_query))
-            self.tweet_queue.put(result)
+    def start_fetching(self, search_query, language, geo_query):
+        while not self.paused:
+            result = self.api.get_conversation(search_query,
+                                               language,
+                                               geo_query)
+
+            if result:
+                formatted_query = (
+                    f'{language}'
+                    f'{"&" + search_query if search_query else ""}'
+                    f'{"&" + geo_query if geo_query else ""}'
+                )
+                self.conversation_list.append((result, formatted_query))
+                self.tweet_queue.put(result)
+
+            time.sleep(0.1)
 
         self.set_status(GeneralStatus.IDLE)
 
@@ -656,8 +671,11 @@ class Main(tk.Frame):
                 now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 filename = f'{now}-{item[1]}.json'
 
+                print(f'Exporting conversation with len: {len(item)}')
                 with open(filename, 'w') as out_file:
-                    json.dump({'conversations': [item[0]]}, out_file)
+                    json.dump({
+                        'conversations': [t for t in item[0]]
+                    }, out_file)
 
             self.set_status(GeneralStatus.IDLE)
             self.set_message('Coversations were exported')
@@ -669,8 +687,9 @@ class Main(tk.Frame):
         ''' Waits for all threads from all widgets to close down and closes
             the window main window afterwards.
         '''
-        if self.is_busy():
-            self.after(100, self.clean_up)
+        while self.is_busy():
+            self.paused = True
+            time.sleep(0.1)
 
         self.clean_up_parent()
 
