@@ -155,21 +155,25 @@ class ConversationDisplay(tk.Frame):
         self.min_part_scale = tk.Scale(self.filter_menu, from_=2, to=10,
                                        label="Min participants:",
                                        orient="horizontal")
+        self.min_part_scale.bind("<ButtonRelease-1>", self.check_max_part_scale)
         self.min_part_scale.set(2)
 
         self.max_part_scale = tk.Scale(self.filter_menu, from_=2, to=10,
                                        label="Max participants:",
                                        orient="horizontal")
+        self.max_part_scale.bind("<ButtonRelease-1>", self.check_min_part_scale)
         self.max_part_scale.set(10)
 
         self.min_turn_scale = tk.Scale(self.filter_menu, from_=3, to=10,
                                        label="Min length:",
                                        orient="horizontal")
+        self.min_turn_scale.bind("<ButtonRelease-1>", self.check_max_turn_scale)
         self.min_turn_scale.set(2)
 
         self.max_turn_scale = tk.Scale(self.filter_menu, from_=3, to=10,
                                        label="Max length:",
                                        orient="horizontal")
+        self.max_turn_scale.bind("<ButtonRelease-1>", self.check_min_turn_scale)
         self.max_turn_scale.set(10)
 
         self.sent_change_label = tk.Label(self.filter_menu, anchor="w",
@@ -230,6 +234,22 @@ class ConversationDisplay(tk.Frame):
                 tk.messagebox.showerror("Error", "Invalid conversation file." +
                                         " Please try a different document.")
                 self.load_file()
+    
+    def check_max_part_scale(self, event):
+        if self.min_part_scale.get() > self.max_part_scale.get():
+            self.max_part_scale.set(self.min_part_scale.get())
+
+    def check_min_part_scale(self, event):
+        if self.min_part_scale.get() > self.max_part_scale.get():
+            self.min_part_scale.set(self.max_part_scale.get())
+
+    def check_max_turn_scale(self, event):
+        if self.min_turn_scale.get() > self.max_turn_scale.get():
+            self.max_turn_scale.set(self.min_turn_scale.get())
+
+    def check_min_turn_scale(self, event):
+        if self.min_turn_scale.get() > self.max_turn_scale.get():
+            self.min_turn_scale.set(self.max_turn_scale.get())
 
     def filter(self):
         filtered_convos = []
