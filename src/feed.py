@@ -3,9 +3,9 @@
 
 """
 File name:  feed.py
-Authors:    Erwin Meijerhof (*******)
-            Wessel Poelman (S2976129)
-Date:       08-04-2021
+Authors:    Erwin Meijerhof (S2377012)
+            Wessel Poelman  (S2976129)
+Date:       09-04-2021
 GitHub:     https://github.com/WPoelman/hci-final-project
 Description:
     The first part of Assignment 3 of the course Human Computer Interaction.
@@ -20,6 +20,7 @@ import json
 import queue
 import textwrap
 import threading
+import time
 import tkinter as tk
 import tkinter.filedialog as fd
 import tkinter.ttk as ttk
@@ -46,6 +47,7 @@ class TweepyApi:
         self.message = ''
 
         self.seen_tweet_ids = set()
+        self.halt = False
 
         # Adapted from:
         # https://developer.twitter.com/en/docs/twitter-for-websites/supported-languages
@@ -182,6 +184,9 @@ class TweepyApi:
         if not acc:
             acc = []
 
+        if self.halt:
+            return []
+
         self.set_status(GeneralStatus.PARSING)
 
         cleaned_item = {
@@ -266,9 +271,18 @@ class TweepyApi:
 
                     ids = {i['id'] for i in conversation}
 
-                    if not ids.issubset(self.seen_tweet_ids):
+                    if ids.issubset(self.seen_tweet_ids):
+                        self.set_status(GeneralStatus.RETRYING)
+                        self.set_message(
+                            'Found already existing tweets, trying again...'
+                        )
+                        continue
+                    else:
                         self.seen_tweet_ids.update(ids)
                         break
+
+                if self.halt:
+                    break
 
                 self.set_status(GeneralStatus.RETRYING)
                 self.set_message((
@@ -283,7 +297,7 @@ class TweepyApi:
 
         if not conversation:
             self.set_status(GeneralStatus.ERROR)
-            self.set_message('No results found!')
+            self.set_message('No results found or stopped fetching!')
             return []
 
         self.set_status(GeneralStatus.IDLE)
@@ -392,7 +406,7 @@ class EditableList(tk.Frame):
         self.status_text.set('')
 
 
-class Main(tk.Frame):
+class Feed(tk.Frame):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent)
         self.clean_up_parent = parent.destroy
@@ -407,7 +421,10 @@ class Main(tk.Frame):
         self.status_text = tk.StringVar(self)
         self.status_label = ttk.Label(self, textvariable=self.status_text)
 
+        self.paused = True
+
         self.textwrapper = textwrap.TextWrapper(60).fill
+        self.status_textwrapper = textwrap.TextWrapper(30).fill
 
         # -- Tweet queue with parsed conversations --
         self.tweet_queue = queue.Queue()
@@ -435,9 +452,10 @@ class Main(tk.Frame):
         self.radius_entry = tk.Entry(self)
         self.geocoder = Nominatim(user_agent='hci_final_project')
 
-        # -- Submit filters to get conversation --
-        self.submit_button = tk.Button(
-            self, text='submit', command=self.submit)
+        # -- Start fetching using the current filters to get conversation --
+        self.start_stop_button = tk.Button(self,
+                                           text='Start fetching',
+                                           command=self.toggle_pause)
 
         # -- Entry labels --
         langauge_label = tk.Label(self, text="Tweet language")
@@ -465,8 +483,10 @@ class Main(tk.Frame):
         tk.Grid.rowconfigure(self, 0, weight=1)
         tk.Grid.columnconfigure(self, 0, weight=1)
 
-        self.search_terms_list.grid(
-            row=0, column=0, columnspan=2, sticky='nsew')
+        self.search_terms_list.grid(row=0,
+                                    column=0,
+                                    columnspan=2,
+                                    sticky='nsew')
         self.status_label.grid(row=1, column=0, columnspan=2, sticky='nsew')
         self.language_select.grid(row=2, column=1, sticky='nsew')
         self.location_entry.grid(row=3, column=1, sticky='nsew')
@@ -475,7 +495,7 @@ class Main(tk.Frame):
         langauge_label.grid(row=2, column=0, sticky='w')
         location_label.grid(row=3, column=0, sticky='w')
         radius_label.grid(row=4, column=0, sticky='w')
-        self.submit_button.grid(row=5, column=1, sticky='nsew')
+        self.start_stop_button.grid(row=5, column=1, sticky='nsew')
 
         scroll.grid(row=0, column=2, rowspan=6, sticky='ens')
         self.tree.grid(row=0, column=2, rowspan=6, sticky='nsew')
@@ -500,27 +520,42 @@ class Main(tk.Frame):
         ''' Polls the system status and creates a formatted string from it '''
         self.status_text.set((
             f'\nAPI:    status:  {self.api.get_status()}'
-            f'\n        message: {self.textwrapper(self.api.get_message())}\n'
+            f'\n        message: {self.status_textwrapper(self.api.get_message())}\n'
             f'\nWindow: status:  {self.get_status()}'
-            f'\n        message: {self.textwrapper(self.get_message())}'
+            f'\n        message: {self.status_textwrapper(self.get_message())}'
         ))
 
-        if self.is_busy() or self.api.is_busy():
-            self.submit_button['state'] = 'disabled'
-        else:
-            self.submit_button['state'] = 'active'
+        if (self.api.status == GeneralStatus.ERROR or
+                self.status == GeneralStatus.ERROR):
+            self.paused = True
+            self.start_stop_button['text'] = 'Start fetching'
 
         self.after(100, self.poll_system_status)
 
-    def submit(self):
+    def toggle_pause(self):
         ''' Fires off the fetching and parsing of new conversations in a
             new thread.
         '''
         if not self.api:
             self.set_status(GeneralStatus.ERROR)
             self.set_message('No credentials file provided, please add one.')
-        else:
+            return
+
+        if self.paused:
+            self.paused = False
+            self.api.halt = False
+            self.start_stop_button['text'] = 'Stop fetching'
+
+            self.tree.delete(*self.tree.get_children())
+            self.conversation_list = []
+            self.api.seen_tweet_ids = set()
+            self.tweet_queue.queue.clear()
+
             threading.Thread(target=self.__submit).start()
+        else:
+            self.paused = True
+            self.api.halt = True
+            self.start_stop_button['text'] = 'Start fetching'
 
     def set_status(self, status):
         ''' Sets the frame status '''
@@ -585,16 +620,24 @@ class Main(tk.Frame):
         else:
             search_query = None
 
-        result = self.api.get_conversation(search_query, language, geo_query)
+        self.start_fetching(search_query, language, geo_query)
 
-        if result:
-            formatted_query = (
-                f'{language}'
-                f'{"&" + search_query if search_query else ""}'
-                f'{"&" + geo_query if geo_query else ""}'
-            )
-            self.conversation_list.append((result, formatted_query))
-            self.tweet_queue.put(result)
+    def start_fetching(self, search_query, language, geo_query):
+        while not self.paused:
+            result = self.api.get_conversation(search_query,
+                                               language,
+                                               geo_query)
+
+            if result:
+                formatted_query = (
+                    f'{language}'
+                    f'{"&" + search_query if search_query else ""}'
+                    f'{"&" + geo_query if geo_query else ""}'
+                )
+                self.conversation_list.append((result, formatted_query))
+                self.tweet_queue.put(result)
+
+            time.sleep(0.1)
 
         self.set_status(GeneralStatus.IDLE)
 
@@ -619,7 +662,6 @@ class Main(tk.Frame):
             parent_tweet = conversation.pop()
 
             if self.tree.exists(parent_tweet['id']):
-                self.set_status(GeneralStatus.ERROR)
                 self.set_message('Trying to add already existing tweet.')
                 raise ValueError('Trying to add already existing tweet.')
 
@@ -651,13 +693,15 @@ class Main(tk.Frame):
         self.set_status(GeneralStatus.PARSING)
 
         if len(self.conversation_list) > 0:
-            for item in self.conversation_list:
+            now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            filename = f'{now}-{self.conversation_list[0][1]}.json'
 
-                now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                filename = f'{now}-{item[1]}.json'
-
-                with open(filename, 'w') as out_file:
-                    json.dump({'conversations': [item[0]]}, out_file)
+            with open(filename, 'w') as out_file:
+                json.dump({
+                    'conversations': [conv[0]
+                                      for conv in self.conversation_list
+                                      if conv[0]]
+                }, out_file)
 
             self.set_status(GeneralStatus.IDLE)
             self.set_message('Coversations were exported')
@@ -669,12 +713,35 @@ class Main(tk.Frame):
         ''' Waits for all threads from all widgets to close down and closes
             the window main window afterwards.
         '''
-        if self.is_busy():
-            self.after(100, self.clean_up)
+        while self.is_busy():
+            self.paused = True
+            time.sleep(0.1)
 
         self.clean_up_parent()
 
         return True
+
+
+class Notebook(ttk.Notebook):
+    def __init__(self, parent, *args, **kwargs):
+        super().__init__(parent)
+        self.parent_cleanup = parent.destroy
+
+        self.feed = Feed(self)
+        self.analysis = Feed(self)
+
+        self.add(self.feed, text='Twitter Feed')
+        self.add(self.analysis, text='Coversation Sentiments')
+
+        self.grid(sticky='nsew')
+
+    def clean_up(self):
+        ''' Calls the cleanup functions on all comment list widgets '''
+        while self.feed.is_busy():
+            self.feed.clean_up()
+            time.sleep(0.1)
+
+        self.parent_cleanup()
 
 
 def main():
@@ -685,25 +752,27 @@ def main():
     tk.Grid.rowconfigure(root, 0, weight=1)
     tk.Grid.columnconfigure(root, 0, weight=1)
 
-    m = Main(root)
+    notebook = Notebook(root)
 
     # -- Menu-bar  --
     menu_bar = tk.Menu(root)
 
     file_menu = tk.Menu(menu_bar, tearoff=0)
-    file_menu.add_command(label="Save", command=m.save)
-    file_menu.add_command(label="Exit", command=m.clean_up)
+    file_menu.add_command(label="Save", command=notebook.feed.save)
+    file_menu.add_command(label="Open")
+    file_menu.add_command(label="Exit", command=notebook.clean_up)
 
     options_menu = tk.Menu(menu_bar, tearoff=0)
-    options_menu.add_command(label="Credentials", command=m.new_credentials)
+    options_menu.add_command(label="Credentials",
+                             command=notebook.feed.new_credentials)
 
     menu_bar.add_cascade(label="File", menu=file_menu)
     menu_bar.add_cascade(label="Options", menu=options_menu)
 
     root.config(menu=menu_bar)
-    root.protocol("WM_DELETE_WINDOW", m.clean_up)
+    root.protocol("WM_DELETE_WINDOW", notebook.clean_up)
 
-    m.mainloop()
+    notebook.mainloop()
 
 
 if __name__ == '__main__':
