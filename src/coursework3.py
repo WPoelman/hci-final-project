@@ -15,7 +15,7 @@ Description:
     program to be used in sentiment analysis. The results of this sentiment
     analysis can be filtered as well.
 Usage:
-    python feed.py
+    python coursework3.py
 """
 
 import datetime
@@ -167,25 +167,29 @@ class ConversationDisplay(tk.Frame):
         self.min_part_scale = tk.Scale(self.filter_menu, from_=2, to=10,
                                        label="Min participants:",
                                        orient="horizontal")
-        self.min_part_scale.bind("<ButtonRelease-1>", self.check_max_part_scale)
+        self.min_part_scale.bind(
+            "<ButtonRelease-1>", self.check_max_part_scale)
         self.min_part_scale.set(2)
 
         self.max_part_scale = tk.Scale(self.filter_menu, from_=2, to=10,
                                        label="Max participants:",
                                        orient="horizontal")
-        self.max_part_scale.bind("<ButtonRelease-1>", self.check_min_part_scale)
+        self.max_part_scale.bind(
+            "<ButtonRelease-1>", self.check_min_part_scale)
         self.max_part_scale.set(10)
 
         self.min_turn_scale = tk.Scale(self.filter_menu, from_=3, to=10,
                                        label="Min length:",
                                        orient="horizontal")
-        self.min_turn_scale.bind("<ButtonRelease-1>", self.check_max_turn_scale)
+        self.min_turn_scale.bind(
+            "<ButtonRelease-1>", self.check_max_turn_scale)
         self.min_turn_scale.set(2)
 
         self.max_turn_scale = tk.Scale(self.filter_menu, from_=3, to=10,
                                        label="Max length:",
                                        orient="horizontal")
-        self.max_turn_scale.bind("<ButtonRelease-1>", self.check_min_turn_scale)
+        self.max_turn_scale.bind(
+            "<ButtonRelease-1>", self.check_min_turn_scale)
         self.max_turn_scale.set(10)
 
         self.sent_change_label = tk.Label(self.filter_menu, anchor="w",
@@ -253,28 +257,28 @@ class ConversationDisplay(tk.Frame):
 
     def check_max_part_scale(self, event):
         ''' Checks if max participant slider is lower than min participant
-            slider and changes value accordingly 
+            slider and changes value accordingly
         '''
         if self.min_part_scale.get() > self.max_part_scale.get():
             self.max_part_scale.set(self.min_part_scale.get())
 
     def check_min_part_scale(self, event):
         ''' Checks if min participant slider is higher than max participant
-            slider and changes value accordingly 
+            slider and changes value accordingly
         '''
         if self.min_part_scale.get() > self.max_part_scale.get():
             self.min_part_scale.set(self.max_part_scale.get())
 
     def check_max_turn_scale(self, event):
-        ''' Checks if max turn slider is lower than min turn slider and 
-            changes value accordingly 
+        ''' Checks if max turn slider is lower than min turn slider and
+            changes value accordingly
         '''
         if self.min_turn_scale.get() > self.max_turn_scale.get():
             self.max_turn_scale.set(self.min_turn_scale.get())
 
     def check_min_turn_scale(self, event):
-        ''' Checks if min turn slider is higher than max turn slider and 
-            changes value accordingly 
+        ''' Checks if min turn slider is higher than max turn slider and
+            changes value accordingly
         '''
         if self.min_turn_scale.get() > self.max_turn_scale.get():
             self.min_turn_scale.set(self.max_turn_scale.get())
@@ -307,7 +311,8 @@ class TweepyApi:
         self.halt = False
 
         # Adapted from:
-        # https://developer.twitter.com/en/docs/twitter-for-websites/supported-languages
+        # https://developer.twitter.com/en/docs/ \ 
+        # twitter-for-websites/supported-languages
         self.available_languages = {
             'English':                  'en',
             'Arabic':                   'ar',
@@ -681,7 +686,7 @@ class Feed(tk.Frame):
         self.paused = True
 
         self.textwrapper = textwrap.TextWrapper(60).fill
-        self.status_textwrapper = textwrap.TextWrapper(30).fill
+        self.st_textwrapper = textwrap.TextWrapper(30).fill
 
         # -- Tweet queue with parsed conversations --
         self.tweet_queue = queue.Queue()
@@ -777,9 +782,9 @@ class Feed(tk.Frame):
         ''' Polls the system status and creates a formatted string from it '''
         self.status_text.set((
             f'\nAPI status: {self.api.get_status()}'
-            f'\nAPI message: {self.status_textwrapper(self.api.get_message())}\n'
+            f'\nAPI message: {self.st_textwrapper(self.api.get_message())}\n'
             f'\nWindow status: {self.get_status()}'
-            f'\nWindow message: {self.status_textwrapper(self.get_message())}'
+            f'\nWindow message: {self.st_textwrapper(self.get_message())}'
         ))
 
         if (self.api.status == GeneralStatus.ERROR or
