@@ -523,7 +523,7 @@ class TweepyApi:
 
                 # Once we have a single conversation, we can extract it and
                 # stop searching.
-                conversation = self.__extract_converstation(response, [])
+                conversation = self.__extract_converstation(response)
                 conversation_len = len(conversation)
 
                 # We only want to find conversations with 3-10 turns, as per
